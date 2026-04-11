@@ -12,9 +12,9 @@ services:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
       - hls_data:/hls                  # segmentos HLS streaming ao vivo
     ports:
-      - "3000:3000"                    # API local para ESP32 e trigger
+      - "3002:3000"                    # API local para ESP32 e trigger (host:3002 -> container:3000)
     # network_mode: host               # descomentar se câmeras estiverem na rede local
-    #                                  # e a porta 3000 conflitar com outro serviço
+    #                                  # e a porta 3002 conflitar com outro serviço
 
   watchtower:
     image: containrrr/watchtower
