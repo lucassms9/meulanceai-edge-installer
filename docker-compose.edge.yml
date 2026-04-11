@@ -2,17 +2,31 @@
 # O arquivo .env fica em /opt/meulanceai/.env — nunca sobrescrito por updates
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis-edge
+    restart: always
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    # Redis só acessível internamente (sem expor porta no host)
+
   meulanceai-edge:
     image: lucassms9/meulanceai-edge:latest
     container_name: meulanceai-edge
     restart: always
     env_file:
       - /opt/meulanceai/.env          # único por cliente, persiste entre updates
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
       - hls_data:/hls                  # segmentos HLS streaming ao vivo
     ports:
       - "3002:3000"                    # API local para ESP32 e trigger (host:3002 -> container:3000)
+    depends_on:
+      - redis
     # network_mode: host               # descomentar se câmeras estiverem na rede local
     #                                  # e a porta 3002 conflitar com outro serviço
 
@@ -28,3 +42,4 @@ services:
 volumes:
   buffer_data:
   hls_data:
+  redis_data:
