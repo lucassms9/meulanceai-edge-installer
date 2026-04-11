@@ -10,7 +10,9 @@ Execute o comando fornecido pelo painel administrativo:
 curl -fsSL https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/install.sh | sudo bash -s -- \
   --establishment-id=SEU_UUID_AQUI \
   --secret=SUA_CHAVE_SECRETA \
-  --api-url=https://api.meulanceai.com.br
+  --api-url=https://api.meulanceai.com.br \
+  --docker-username=SEU_USERNAME \
+  --docker-token=SEU_TOKEN
 ```
 
 ## 📋 Pré-requisitos
@@ -26,6 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer
 |-----------|-------------|-----------|
 | `--establishment-id` | ✅ Sim | UUID do estabelecimento (fornecido pelo admin) |
 | `--secret` | ✅ Sim | Chave secreta Edge (32+ caracteres) |
+| `--docker-username` | ✅ Sim | Usuário do Docker Hub (para imagens privadas) |
+| `--docker-token` | ✅ Sim | Token/senha do Docker Hub |
 | `--api-url` | ❌ Não | URL da API (padrão: https://api.meulanceai.com.br) |
 | `--tailscale-key` | ❌ Não | Auth key do Tailscale para VPN (opcional) |
 

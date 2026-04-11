@@ -20,6 +20,8 @@ ESTABLISHMENT_ID=""
 EDGE_SECRET=""
 API_URL="https://api.meulanceai.com.br"
 TAILSCALE_KEY=""
+DOCKER_USERNAME=""
+DOCKER_TOKEN=""
 INSTALL_DIR="/opt/meulanceai"
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/docker-compose.edge.yml"
 
@@ -30,6 +32,8 @@ for arg in "$@"; do
     --secret=*)           EDGE_SECRET="${arg#*=}" ;;
     --api-url=*)          API_URL="${arg#*=}" ;;
     --tailscale-key=*)    TAILSCALE_KEY="${arg#*=}" ;;
+    --docker-username=*)  DOCKER_USERNAME="${arg#*=}" ;;
+    --docker-token=*)     DOCKER_TOKEN="${arg#*=}" ;;
     *) warn "Argumento desconhecido: $arg" ;;
   esac
 done
@@ -142,7 +146,14 @@ EOF
 systemctl daemon-reload
 systemctl enable meulanceai-edge.service
 
-# ─── 8. Pull e start ─────────────────────────────────────────────────────────
+# ─── 8. Docker login (se credenciais fornecidas) ─────────────────────────────
+if [[ -n "$DOCKER_USERNAME" ]] && [[ -n "$DOCKER_TOKEN" ]]; then
+  info "🔐 Autenticando no Docker Hub..."
+  echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USERNAME" --password-stdin
+  info "✅ Autenticado como $DOCKER_USERNAME"
+fi
+
+# ─── 9. Pull e start ─────────────────────────────────────────────────────────
 info "🚀 Baixando imagem e iniciando containers..."
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
