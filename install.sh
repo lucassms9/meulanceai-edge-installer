@@ -21,7 +21,7 @@ EDGE_SECRET=""
 API_URL="https://api.meulanceai.com.br"
 TAILSCALE_KEY=""
 INSTALL_DIR="/opt/meulanceai"
-DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge/main/docker-compose.edge.yml"
+DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/docker-compose.edge.yml"
 
 # ─── Parse args ──────────────────────────────────────────────────────────────
 for arg in "$@"; do

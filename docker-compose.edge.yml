@@ -1,0 +1,30 @@
+# docker-compose usado no hardware do cliente (edge)
+# O arquivo .env fica em /opt/meulanceai/.env — nunca sobrescrito por updates
+
+services:
+  meulanceai-edge:
+    image: lucassms9/meulanceai-edge:latest
+    container_name: meulanceai-edge
+    restart: always
+    env_file:
+      - /opt/meulanceai/.env          # único por cliente, persiste entre updates
+    volumes:
+      - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
+      - hls_data:/hls                  # segmentos HLS streaming ao vivo
+    ports:
+      - "3000:3000"                    # API local para ESP32 e trigger
+    # network_mode: host               # descomentar se câmeras estiverem na rede local
+    #                                  # e a porta 3000 conflitar com outro serviço
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Verifica nova imagem a cada 5 minutos e reinicia automaticamente
+    command: --interval 300 --cleanup meulanceai-edge
+
+volumes:
+  buffer_data:
+  hls_data:
