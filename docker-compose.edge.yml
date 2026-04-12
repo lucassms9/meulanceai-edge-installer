@@ -30,16 +30,18 @@ services:
     # network_mode: host               # descomentar se câmeras estiverem na rede local
     #                                  # e a porta 3002 conflitar com outro serviço
 
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
+  edge-auto-updater:
+    image: lucassms9/meulanceai-edge-updater:latest
+    container_name: edge-auto-updater
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    # Verifica nova imagem a cada 5 minutos e reinicia automaticamente
-    command: --interval 300 --cleanup meulanceai-edge
+      - /opt/meulanceai:/opt/meulanceai
+      - updater_logs:/var/log
+    # Verifica nova imagem a cada 5 minutos e atualiza automaticamente
 
 volumes:
   buffer_data:
   hls_data:
   redis_data:
+  updater_logs:
