@@ -11,6 +11,15 @@ log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+# Login no Docker Hub se credenciais estiverem configuradas
+if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+  echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "❌ Erro ao fazer login no Docker Hub"
+    exit 1
+  fi
+fi
+
 log "🔍 Verificando atualizações para $IMAGE_NAME..."
 
 # Pegar digest da imagem atual

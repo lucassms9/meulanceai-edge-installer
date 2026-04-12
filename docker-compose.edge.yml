@@ -24,21 +24,24 @@ services:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
       - hls_data:/hls                  # segmentos HLS streaming ao vivo
     ports:
-      - "3002:3000"                    # API local para ESP32 e trigger (host:3002 -> container:3000)
+      - "3000:3000"                    # API local para ESP32 e trigger
     depends_on:
       - redis
     # network_mode: host               # descomentar se câmeras estiverem na rede local
-    #                                  # e a porta 3002 conflitar com outro serviço
+    #                                  # e a porta 3000 conflitar com outro serviço
 
   edge-auto-updater:
     image: lucassms9/meulanceai-edge-updater:latest
     container_name: edge-auto-updater
     restart: always
+    env_file:
+      - /opt/meulanceai/.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /opt/meulanceai:/opt/meulanceai
+      - /opt/meulanceai:/opt/meulanceai:ro
       - updater_logs:/var/log
-    # Verifica nova imagem a cada 5 minutos e atualiza automaticamente
+    environment:
+      - TZ=America/Sao_Paulo
 
 volumes:
   buffer_data:
