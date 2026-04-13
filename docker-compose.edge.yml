@@ -2,6 +2,19 @@
 # O arquivo .env fica em /opt/meulanceai/.env — nunca sobrescrito por updates
 
 services:
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-edge
+    restart: always
+    ports:
+      - "80:80"                        # HTTP para ESP32 chamar meulanceai.local
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - meulanceai-edge
+    networks:
+      - edge-network
+
   redis:
     image: redis:7-alpine
     container_name: redis-edge
@@ -9,6 +22,8 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    networks:
+      - edge-network
     # Redis só acessível internamente (sem expor porta no host)
 
   meulanceai-edge:
@@ -23,12 +38,12 @@ services:
     volumes:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
       - hls_data:/hls                  # segmentos HLS streaming ao vivo
-    ports:
-      - "3000:3000"                    # API local para ESP32 e trigger
+    expose:
+      - "3000"                         # porta interna (não exposta no host, apenas nginx acessa)
     depends_on:
       - redis
-    # network_mode: host               # descomentar se câmeras estiverem na rede local
-    #                                  # e a porta 3000 conflitar com outro serviço
+    networks:
+      - edge-network
 
   edge-auto-updater:
     image: lucassms9/meulanceai-edge-updater:latest
@@ -42,6 +57,12 @@ services:
       - updater_logs:/var/log
     environment:
       - TZ=America/Sao_Paulo
+    networks:
+      - edge-network
+
+networks:
+  edge-network:
+    driver: bridge
 
 volumes:
   buffer_data:
