@@ -104,6 +104,12 @@ mkdir -p "$INSTALL_DIR"
 info "📥 Baixando docker-compose..."
 curl -fsSL "$DOCKER_COMPOSE_URL" -o "$INSTALL_DIR/docker-compose.yml"
 
+# ─── 5.1. nginx.conf ──────────────────────────────────────────────────────────
+info "📥 Baixando nginx.conf..."
+NGINX_CONF_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/nginx.conf"
+curl -fsSL "$NGINX_CONF_URL" -o "$INSTALL_DIR/nginx.conf"
+info "✅ nginx.conf instalado"
+
 # ─── 6. .env (o único arquivo sensível — nunca sobrescrito em updates) ─────────
 ENV_FILE="$INSTALL_DIR/.env"
 
