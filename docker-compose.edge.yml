@@ -57,6 +57,8 @@ services:
       - updater_logs:/var/log
     environment:
       - TZ=America/Sao_Paulo
+      - DOCKER_USERNAME=${DOCKER_USERNAME:-}
+      - DOCKER_PASSWORD=${DOCKER_PASSWORD:-}
     networks:
       - edge-network
 
