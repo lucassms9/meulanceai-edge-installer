@@ -6,6 +6,8 @@
 #        --secret=EDGE_SECRET \
 #        [--api-url=https://api.meulanceai.com.br] \
 #        [--tailscale-key=TS_KEY]
+#
+# Credenciais Docker Hub são buscadas automaticamente da API.
 # =============================================================================
 set -euo pipefail
 
@@ -20,8 +22,6 @@ ESTABLISHMENT_ID=""
 EDGE_SECRET=""
 API_URL="https://api.meulanceai.com.br"
 TAILSCALE_KEY=""
-DOCKER_USERNAME=""
-DOCKER_TOKEN=""
 INSTALL_DIR="/opt/meulanceai"
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/docker-compose.edge.yml"
 
@@ -32,8 +32,6 @@ for arg in "$@"; do
     --secret=*)           EDGE_SECRET="${arg#*=}" ;;
     --api-url=*)          API_URL="${arg#*=}" ;;
     --tailscale-key=*)    TAILSCALE_KEY="${arg#*=}" ;;
-    --docker-username=*)  DOCKER_USERNAME="${arg#*=}" ;;
-    --docker-token=*)     DOCKER_TOKEN="${arg#*=}" ;;
     *) warn "Argumento desconhecido: $arg" ;;
   esac
 done
@@ -65,7 +63,7 @@ echo ""
 # ─── 1. Dependências do sistema ──────────────────────────────────────────────
 info "📦 Instalando dependências base..."
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates gnupg lsb-release
+apt-get install -y -qq curl ca-certificates gnupg lsb-release jq
 
 # ─── 2. Docker ───────────────────────────────────────────────────────────────
 if command -v docker &>/dev/null; then
@@ -122,9 +120,41 @@ else
 ESTABLISHMENT_ID=${ESTABLISHMENT_ID}
 API_URL=${API_URL}
 EDGE_SECRET=${EDGE_SECRET}
+BUFFER_DIR=/home/ubuntu/buffer
 EOF
   chmod 600 "$ENV_FILE"
   info "✅ .env criado (permissões: 600)"
+
+  # ─── 6.1. Buscar credenciais Docker da API ─────────────────────────────────
+  info "🐳 Buscando credenciais Docker Hub da API..."
+  DOCKER_CREDS_RESPONSE=$(curl -s -w "\n%{http_code}" \
+    -H "x-edge-secret: ${EDGE_SECRET}" \
+    "${API_URL}/edge/docker-credentials")
+
+  HTTP_STATUS=$(echo "$DOCKER_CREDS_RESPONSE" | tail -n1)
+  DOCKER_CREDS=$(echo "$DOCKER_CREDS_RESPONSE" | head -n-1)
+
+  if [[ "$HTTP_STATUS" -eq 200 ]] && [[ -n "$DOCKER_CREDS" ]]; then
+    DOCKER_USERNAME=$(echo "$DOCKER_CREDS" | jq -r '.username // empty')
+    DOCKER_PASSWORD=$(echo "$DOCKER_CREDS" | jq -r '.password // empty')
+    
+    if [[ -n "$DOCKER_USERNAME" ]] && [[ "$DOCKER_USERNAME" != "null" ]] && \
+       [[ -n "$DOCKER_PASSWORD" ]] && [[ "$DOCKER_PASSWORD" != "null" ]]; then
+      
+      # Adicionar ao .env
+      echo "" >> "$ENV_FILE"
+      echo "# Docker Hub credentials (auto-configured)" >> "$ENV_FILE"
+      echo "DOCKER_USERNAME=${DOCKER_USERNAME}" >> "$ENV_FILE"
+      echo "DOCKER_PASSWORD=${DOCKER_PASSWORD}" >> "$ENV_FILE"
+      
+      info "✅ Credenciais Docker configuradas automaticamente"
+    else
+      warn "Credenciais Docker não encontradas na API (usando imagem pública)"
+    fi
+  else
+    warn "Erro ao buscar credenciais Docker (HTTP $HTTP_STATUS)"
+    warn "Instalação continua usando imagem pública"
+  fi
 fi
 
 # ─── 7. Systemd service (garante start automático no boot) ───────────────────
@@ -152,14 +182,7 @@ EOF
 systemctl daemon-reload
 systemctl enable meulanceai-edge.service
 
-# ─── 8. Docker login (se credenciais fornecidas) ─────────────────────────────
-if [[ -n "$DOCKER_USERNAME" ]] && [[ -n "$DOCKER_TOKEN" ]]; then
-  info "🔐 Autenticando no Docker Hub..."
-  echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USERNAME" --password-stdin
-  info "✅ Autenticado como $DOCKER_USERNAME"
-fi
-
-# ─── 9. Pull e start ─────────────────────────────────────────────────────────
+# ─── 8. Pull e start ─────────────────────────────────────────────────────────
 info "🚀 Baixando imagem e iniciando containers..."
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
