@@ -76,6 +76,24 @@ else
   info "✅ Docker instalado"
 fi
 
+# ─── 2.1. Configurar rotação de logs (prevenir disco cheio) ──────────────────
+info "📝 Configurando rotação de logs Docker..."
+if [ ! -f /etc/docker/daemon.json ]; then
+  cat > /etc/docker/daemon.json << 'EOF'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+EOF
+  systemctl restart docker
+  info "✅ Rotação de logs configurada (30MB máx por container)"
+else
+  info "⚠️  /etc/docker/daemon.json já existe - não sobrescrito"
+fi
+
 # ─── 3. Tailscale (VPN mesh para acesso remoto) ───────────────────────────────
 if [[ -n "$TAILSCALE_KEY" ]]; then
   if command -v tailscale &>/dev/null; then
@@ -187,6 +205,39 @@ info "🚀 Baixando imagem e iniciando containers..."
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 
+# ─── 8.1. Configurar mDNS/Avahi (acesso via meulanceai.local) ─────────────────
+info "🔍 Configurando mDNS/Avahi para acesso via meulanceai.local..."
+if ! command -v avahi-daemon &>/dev/null; then
+  apt-get install -y -qq avahi-daemon avahi-utils
+fi
+
+# Configurar hostname
+CURRENT_HOSTNAME=$(hostname)
+if [ "$CURRENT_HOSTNAME" != "meulanceai" ]; then
+  hostnamectl set-hostname meulanceai
+  info "✅ Hostname configurado: meulanceai"
+fi
+
+# Habilitar e iniciar Avahi
+systemctl enable avahi-daemon
+systemctl start avahi-daemon
+
+# Criar serviço HTTP mDNS
+cat > /etc/avahi/services/http.service << 'EOF'
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">%h</name>
+  <service>
+    <type>_http._tcp</type>
+    <port>80</port>
+  </service>
+</service-group>
+EOF
+
+systemctl restart avahi-daemon
+info "✅ mDNS configurado - acesso via meulanceai.local"
+
 # ─── 9. Aguardar e verificar ─────────────────────────────────────────────────
 info "⏳ Aguardando edge inicializar (30s)..."
 sleep 30
@@ -201,6 +252,7 @@ if [[ "$CONTAINER_STATUS" == "running" ]]; then
   echo ""
   info "Establishment ID : $ESTABLISHMENT_ID"
   info "Container        : running"
+  info "Acesso local     : http://meulanceai.local"
   docker compose -f "$INSTALL_DIR/docker-compose.yml" logs meulanceai-edge --tail 10
 else
   warn "Container status: $CONTAINER_STATUS"
@@ -214,3 +266,6 @@ echo "  Ver logs:      docker compose -f $INSTALL_DIR/docker-compose.yml logs -f
 echo "  Reiniciar:     systemctl restart meulanceai-edge"
 echo "  Status:        systemctl status meulanceai-edge"
 echo "  Atualizar:     docker compose -f $INSTALL_DIR/docker-compose.yml pull && systemctl restart meulanceai-edge"
+echo ""
+info "Acesso ESP32:"
+echo "  URL: http://meulanceai.local/event"
