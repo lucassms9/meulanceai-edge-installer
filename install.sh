@@ -200,12 +200,78 @@ EOF
 systemctl daemon-reload
 systemctl enable meulanceai-edge.service
 
-# ─── 8. Pull e start ─────────────────────────────────────────────────────────
+# ─── 8. Tailscale Watchdog (reconexão automática) ────────────────────────────
+if [[ -n "$TAILSCALE_KEY" ]]; then
+  info "🔁 Configurando Tailscale Watchdog..."
+
+  cat > "$INSTALL_DIR/tailscale-watchdog.sh" << 'WATCHDOG'
+#!/bin/bash
+# Monitora e reconecta o Tailscale automaticamente
+TAILSCALE_KEY_FILE="/opt/meulanceai/.tailscale-key"
+LOG_TAG="tailscale-watchdog"
+
+while true; do
+  STATUS=$(tailscale status --json 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('BackendState','Unknown'))" 2>/dev/null \
+    || echo "Unknown")
+
+  if [[ "$STATUS" != "Running" ]]; then
+    logger -t "$LOG_TAG" "Tailscale desconectado (state: $STATUS). Reconectando..."
+
+    if [[ -f "$TAILSCALE_KEY_FILE" ]]; then
+      TS_AUTH_KEY=$(cat "$TAILSCALE_KEY_FILE")
+      tailscale up --authkey="$TS_AUTH_KEY" 2>/dev/null \
+        || tailscale up 2>/dev/null \
+        || logger -t "$LOG_TAG" "ERRO: falha ao reconectar Tailscale"
+    else
+      tailscale up 2>/dev/null \
+        || logger -t "$LOG_TAG" "ERRO: falha ao reconectar Tailscale (sem authkey salva)"
+    fi
+  fi
+
+  sleep 30
+done
+WATCHDOG
+
+  chmod +x "$INSTALL_DIR/tailscale-watchdog.sh"
+
+  # Salvar a authkey para reconexões futuras (permissão restrita)
+  echo "$TAILSCALE_KEY" > "$INSTALL_DIR/.tailscale-key"
+  chmod 600 "$INSTALL_DIR/.tailscale-key"
+
+  cat > /etc/systemd/system/tailscale-watchdog.service << EOF
+[Unit]
+Description=Tailscale Connection Watchdog
+After=network-online.target tailscaled.service
+Wants=network-online.target
+Requires=tailscaled.service
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_DIR}/tailscale-watchdog.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable tailscale-watchdog.service
+  systemctl start tailscale-watchdog.service
+  info "✅ Tailscale Watchdog ativo (verifica a cada 30s)"
+else
+  warn "Tailscale Watchdog não instalado (Tailscale não configurado)."
+fi
+
+# ─── 9. Pull e start ─────────────────────────────────────────────────────────
 info "🚀 Baixando imagem e iniciando containers..."
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 
-# ─── 8.1. Configurar mDNS/Avahi (acesso via meulanceai.local) ─────────────────
+# ─── 9.1. Configurar mDNS/Avahi (acesso via meulanceai.local) ─────────────────
 info "🔍 Configurando mDNS/Avahi para acesso via meulanceai.local..."
 if ! command -v avahi-daemon &>/dev/null; then
   apt-get install -y -qq avahi-daemon avahi-utils
@@ -238,7 +304,7 @@ EOF
 systemctl restart avahi-daemon
 info "✅ mDNS configurado - acesso via meulanceai.local"
 
-# ─── 9. Aguardar e verificar ─────────────────────────────────────────────────
+# ─── 10. Aguardar e verificar ─────────────────────────────────────────────────
 info "⏳ Aguardando edge inicializar (30s)..."
 sleep 30
 
@@ -266,6 +332,7 @@ echo "  Ver logs:      docker compose -f $INSTALL_DIR/docker-compose.yml logs -f
 echo "  Reiniciar:     systemctl restart meulanceai-edge"
 echo "  Status:        systemctl status meulanceai-edge"
 echo "  Atualizar:     docker compose -f $INSTALL_DIR/docker-compose.yml pull && systemctl restart meulanceai-edge"
+echo "  Tailscale WD:  systemctl status tailscale-watchdog"
 echo ""
 info "Acesso ESP32:"
 echo "  URL: http://meulanceai.local/event"
