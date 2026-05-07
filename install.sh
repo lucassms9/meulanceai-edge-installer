@@ -266,12 +266,25 @@ else
   warn "Tailscale Watchdog não instalado (Tailscale não configurado)."
 fi
 
-# ─── 9. Pull e start ─────────────────────────────────────────────────────────
+# ─── 9. Docker login (se credenciais disponíveis) ────────────────────────────
+DOCKER_USERNAME_VAL=$(grep "^DOCKER_USERNAME=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
+DOCKER_PASSWORD_VAL=$(grep "^DOCKER_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
+
+if [[ -n "$DOCKER_USERNAME_VAL" ]] && [[ -n "$DOCKER_PASSWORD_VAL" ]]; then
+  info "🐳 Autenticando no Docker Hub como $DOCKER_USERNAME_VAL..."
+  echo "$DOCKER_PASSWORD_VAL" | docker login -u "$DOCKER_USERNAME_VAL" --password-stdin \
+    && info "✅ Docker Hub autenticado" \
+    || warn "⚠️  Falha no docker login — pull pode falhar para imagens privadas"
+else
+  warn "Credenciais Docker não encontradas no .env — tentando pull sem autenticação"
+fi
+
+# ─── 10. Pull e start ────────────────────────────────────────────────────────
 info "🚀 Baixando imagem e iniciando containers..."
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 
-# ─── 9.1. Configurar mDNS/Avahi (acesso via meulanceai.local) ─────────────────
+# ─── 10.1. Configurar mDNS/Avahi (acesso via meulanceai.local) ───────────────
 info "🔍 Configurando mDNS/Avahi para acesso via meulanceai.local..."
 if ! command -v avahi-daemon &>/dev/null; then
   apt-get install -y -qq avahi-daemon avahi-utils
@@ -304,7 +317,7 @@ EOF
 systemctl restart avahi-daemon
 info "✅ mDNS configurado - acesso via meulanceai.local"
 
-# ─── 10. Aguardar e verificar ─────────────────────────────────────────────────
+# ─── 11. Aguardar e verificar ─────────────────────────────────────────────────
 info "⏳ Aguardando edge inicializar (30s)..."
 sleep 30
 
