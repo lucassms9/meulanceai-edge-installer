@@ -266,25 +266,7 @@ else
   warn "Tailscale Watchdog não instalado (Tailscale não configurado)."
 fi
 
-# ─── 9. Docker login (se credenciais disponíveis) ────────────────────────────
-DOCKER_USERNAME_VAL=$(grep "^DOCKER_USERNAME=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
-DOCKER_PASSWORD_VAL=$(grep "^DOCKER_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
-
-if [[ -n "$DOCKER_USERNAME_VAL" ]] && [[ -n "$DOCKER_PASSWORD_VAL" ]]; then
-  info "🐳 Autenticando no Docker Hub como $DOCKER_USERNAME_VAL..."
-  echo "$DOCKER_PASSWORD_VAL" | docker login -u "$DOCKER_USERNAME_VAL" --password-stdin \
-    && info "✅ Docker Hub autenticado" \
-    || warn "⚠️  Falha no docker login — pull pode falhar para imagens privadas"
-else
-  warn "Credenciais Docker não encontradas no .env — tentando pull sem autenticação"
-fi
-
-# ─── 10. Pull e start ────────────────────────────────────────────────────────
-info "🚀 Baixando imagem e iniciando containers..."
-docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
-docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
-
-# ─── 10.1. Configurar mDNS/Avahi (acesso via meulanceai.local) ───────────────
+# ─── 9. mDNS/Avahi (antes do pull — não depende de Docker) ─────────────────
 info "🔍 Configurando mDNS/Avahi para acesso via meulanceai.local..."
 if ! command -v avahi-daemon &>/dev/null; then
   apt-get install -y -qq avahi-daemon avahi-utils
@@ -294,6 +276,7 @@ fi
 CURRENT_HOSTNAME=$(hostname)
 if [ "$CURRENT_HOSTNAME" != "meulanceai" ]; then
   hostnamectl set-hostname meulanceai
+  sed -i "s/$CURRENT_HOSTNAME/meulanceai/g" /etc/hosts
   info "✅ Hostname configurado: meulanceai"
 fi
 
@@ -317,7 +300,25 @@ EOF
 systemctl restart avahi-daemon
 info "✅ mDNS configurado - acesso via meulanceai.local"
 
-# ─── 11. Aguardar e verificar ─────────────────────────────────────────────────
+# ─── 10. Docker login (se credenciais disponíveis) ───────────────────────────
+DOCKER_USERNAME_VAL=$(grep "^DOCKER_USERNAME=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
+DOCKER_PASSWORD_VAL=$(grep "^DOCKER_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
+
+if [[ -n "$DOCKER_USERNAME_VAL" ]] && [[ -n "$DOCKER_PASSWORD_VAL" ]]; then
+  info "🐳 Autenticando no Docker Hub como $DOCKER_USERNAME_VAL..."
+  echo "$DOCKER_PASSWORD_VAL" | docker login -u "$DOCKER_USERNAME_VAL" --password-stdin \
+    && info "✅ Docker Hub autenticado" \
+    || warn "⚠️  Falha no docker login — pull pode falhar para imagens privadas"
+else
+  warn "Credenciais Docker não encontradas no .env — tentando pull sem autenticação"
+fi
+
+# ─── 11. Pull e start ────────────────────────────────────────────────────────
+info "🚀 Baixando imagem e iniciando containers..."
+docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
+docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
+
+# ─── 12. Aguardar e verificar ─────────────────────────────────────────────────
 info "⏳ Aguardando edge inicializar (30s)..."
 sleep 30
 
