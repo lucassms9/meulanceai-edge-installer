@@ -4,8 +4,7 @@
 # Uso: curl -fsSL https://install.meulanceai.com.br | bash -s -- \
 #        --establishment-id=UUID \
 #        --secret=EDGE_SECRET \
-#        [--api-url=https://api.meulanceai.com.br] \
-#        [--tailscale-key=TS_KEY]
+#        [--api-url=https://api.meulanceai.com.br]
 #
 # Credenciais Docker Hub são buscadas automaticamente da API.
 # =============================================================================
@@ -21,7 +20,6 @@ error()   { echo -e "${RED}[ERRO]${NC} $*"; exit 1; }
 ESTABLISHMENT_ID=""
 EDGE_SECRET=""
 API_URL="https://api.meulanceai.com.br"
-TAILSCALE_KEY=""
 INSTALL_DIR="/opt/meulanceai"
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/docker-compose.edge.yml"
 
@@ -31,7 +29,6 @@ for arg in "$@"; do
     --establishment-id=*) ESTABLISHMENT_ID="${arg#*=}" ;;
     --secret=*)           EDGE_SECRET="${arg#*=}" ;;
     --api-url=*)          API_URL="${arg#*=}" ;;
-    --tailscale-key=*)    TAILSCALE_KEY="${arg#*=}" ;;
     *) warn "Argumento desconhecido: $arg" ;;
   esac
 done
@@ -57,7 +54,6 @@ echo ""
 info "Establishment ID : $ESTABLISHMENT_ID"
 info "API URL          : $API_URL"
 info "Diretório        : $INSTALL_DIR"
-[[ -n "$TAILSCALE_KEY" ]] && info "Tailscale        : ativado"
 echo ""
 
 # ─── 1. Dependências do sistema ──────────────────────────────────────────────
@@ -94,39 +90,21 @@ else
   info "⚠️  /etc/docker/daemon.json já existe - não sobrescrito"
 fi
 
-# ─── 3. Tailscale (VPN mesh para acesso remoto) ───────────────────────────────
-if [[ -n "$TAILSCALE_KEY" ]]; then
-  if command -v tailscale &>/dev/null; then
-    info "🔒 Tailscale já instalado"
-  else
-    info "🔒 Instalando Tailscale..."
-    curl -fsSL https://tailscale.com/install.sh | sh
-  fi
-
-  info "🔒 Conectando ao Tailscale..."
-  # Hostname = edge-<primeiros 8 chars do UUID>
-  TS_HOSTNAME="edge-${ESTABLISHMENT_ID:0:8}"
-  tailscale up --authkey="$TAILSCALE_KEY" --hostname="$TS_HOSTNAME" --accept-routes
-  info "✅ Tailscale conectado como $TS_HOSTNAME"
-else
-  warn "Tailscale não configurado (--tailscale-key não fornecido). Acesso remoto desabilitado."
-fi
-
-# ─── 4. Diretório de instalação ───────────────────────────────────────────────
+# ─── 3. Diretório de instalação ───────────────────────────────────────────────
 info "📁 Criando $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
-# ─── 5. docker-compose.edge.yml ───────────────────────────────────────────────
+# ─── 3. docker-compose.edge.yml ───────────────────────────────────────────────
 info "📥 Baixando docker-compose..."
 curl -fsSL "$DOCKER_COMPOSE_URL" -o "$INSTALL_DIR/docker-compose.yml"
 
-# ─── 5.1. nginx.conf ──────────────────────────────────────────────────────────
+# ─── 3.1. nginx.conf ──────────────────────────────────────────────────────────
 info "📥 Baixando nginx.conf..."
 NGINX_CONF_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/nginx.conf"
 curl -fsSL "$NGINX_CONF_URL" -o "$INSTALL_DIR/nginx.conf"
 info "✅ nginx.conf instalado"
 
-# ─── 6. .env (o único arquivo sensível — nunca sobrescrito em updates) ─────────
+# ─── 4. .env (o único arquivo sensível — nunca sobrescrito em updates) ─────────
 ENV_FILE="$INSTALL_DIR/.env"
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -143,7 +121,7 @@ EOF
   chmod 600 "$ENV_FILE"
   info "✅ .env criado (permissões: 600)"
 
-  # ─── 6.1. Buscar credenciais Docker da API ─────────────────────────────────
+  # ─── 4.1. Buscar credenciais Docker da API ─────────────────────────────────
   info "🐳 Buscando credenciais Docker Hub da API..."
   DOCKER_CREDS_RESPONSE=$(curl -s -w "\n%{http_code}" \
     -H "x-edge-secret: ${EDGE_SECRET}" \
@@ -175,7 +153,7 @@ EOF
   fi
 fi
 
-# ─── 7. Systemd service (garante start automático no boot) ───────────────────
+# ─── 5. Systemd service (garante start automático no boot) ───────────────────
 info "⚙️  Configurando serviço systemd..."
 cat > /etc/systemd/system/meulanceai-edge.service << EOF
 [Unit]
@@ -200,14 +178,13 @@ EOF
 systemctl daemon-reload
 systemctl enable meulanceai-edge.service
 
-# ─── 8. Tailscale Watchdog (reconexão automática) ────────────────────────────
-if [[ -n "$TAILSCALE_KEY" ]]; then
-  info "🔁 Configurando Tailscale Watchdog..."
+# ─── 6. Tailscale Watchdog (reconexão automática se Tailscale estiver instalado) ─
+if command -v tailscale &>/dev/null; then
+  info "🔁 Tailscale detectado — configurando Watchdog..."
 
   cat > "$INSTALL_DIR/tailscale-watchdog.sh" << 'WATCHDOG'
 #!/bin/bash
 # Monitora e reconecta o Tailscale automaticamente
-TAILSCALE_KEY_FILE="/opt/meulanceai/.tailscale-key"
 LOG_TAG="tailscale-watchdog"
 
 while true; do
@@ -217,16 +194,8 @@ while true; do
 
   if [[ "$STATUS" != "Running" ]]; then
     logger -t "$LOG_TAG" "Tailscale desconectado (state: $STATUS). Reconectando..."
-
-    if [[ -f "$TAILSCALE_KEY_FILE" ]]; then
-      TS_AUTH_KEY=$(cat "$TAILSCALE_KEY_FILE")
-      tailscale up --authkey="$TS_AUTH_KEY" 2>/dev/null \
-        || tailscale up 2>/dev/null \
-        || logger -t "$LOG_TAG" "ERRO: falha ao reconectar Tailscale"
-    else
-      tailscale up 2>/dev/null \
-        || logger -t "$LOG_TAG" "ERRO: falha ao reconectar Tailscale (sem authkey salva)"
-    fi
+    tailscale up 2>/dev/null \
+      || logger -t "$LOG_TAG" "ERRO: falha ao reconectar Tailscale"
   fi
 
   sleep 30
@@ -234,10 +203,6 @@ done
 WATCHDOG
 
   chmod +x "$INSTALL_DIR/tailscale-watchdog.sh"
-
-  # Salvar a authkey para reconexões futuras (permissão restrita)
-  echo "$TAILSCALE_KEY" > "$INSTALL_DIR/.tailscale-key"
-  chmod 600 "$INSTALL_DIR/.tailscale-key"
 
   cat > /etc/systemd/system/tailscale-watchdog.service << EOF
 [Unit]
@@ -263,10 +228,10 @@ EOF
   systemctl start tailscale-watchdog.service
   info "✅ Tailscale Watchdog ativo (verifica a cada 30s)"
 else
-  warn "Tailscale Watchdog não instalado (Tailscale não configurado)."
+  info "ℹ️  Tailscale não instalado — Watchdog ignorado"
 fi
 
-# ─── 9. mDNS/Avahi (antes do pull — não depende de Docker) ─────────────────
+# ─── 7. mDNS/Avahi (antes do pull — não depende de Docker) ─────────────────
 info "🔍 Configurando mDNS/Avahi para acesso via meulanceai.local..."
 if ! command -v avahi-daemon &>/dev/null; then
   apt-get install -y -qq avahi-daemon avahi-utils
@@ -300,7 +265,7 @@ EOF
 systemctl restart avahi-daemon
 info "✅ mDNS configurado - acesso via meulanceai.local"
 
-# ─── 10. Docker login (se credenciais disponíveis) ───────────────────────────
+# ─── 8. Docker login (se credenciais disponíveis) ───────────────────────────
 DOCKER_USERNAME_VAL=$(grep "^DOCKER_USERNAME=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
 DOCKER_PASSWORD_VAL=$(grep "^DOCKER_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
 
@@ -313,12 +278,12 @@ else
   warn "Credenciais Docker não encontradas no .env — tentando pull sem autenticação"
 fi
 
-# ─── 11. Pull e start ────────────────────────────────────────────────────────
+# ─── 9. Pull e start ────────────────────────────────────────────────────────
 info "🚀 Baixando imagem e iniciando containers..."
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" pull
 docker compose -f "$INSTALL_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 
-# ─── 12. Aguardar e verificar ─────────────────────────────────────────────────
+# ─── 10. Aguardar e verificar ─────────────────────────────────────────────────
 info "⏳ Aguardando edge inicializar (30s)..."
 sleep 30
 
@@ -346,7 +311,6 @@ echo "  Ver logs:      docker compose -f $INSTALL_DIR/docker-compose.yml logs -f
 echo "  Reiniciar:     systemctl restart meulanceai-edge"
 echo "  Status:        systemctl status meulanceai-edge"
 echo "  Atualizar:     docker compose -f $INSTALL_DIR/docker-compose.yml pull && systemctl restart meulanceai-edge"
-echo "  Tailscale WD:  systemctl status tailscale-watchdog"
 echo ""
 info "Acesso ESP32:"
 echo "  URL: http://meulanceai.local/event"
