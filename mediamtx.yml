@@ -1,0 +1,35 @@
+# MediaMTX fica acessível somente pela rede interna do Docker.
+# O Edge cadastra e remove dinamicamente as câmeras pela Control API.
+logLevel: info
+logDestinations: [stdout]
+
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+
+api: yes
+apiAddress: :9997
+
+rtsp: no
+rtmp: no
+webrtc: no
+srt: no
+
+hls: yes
+hlsAddress: :8888
+hlsEncryption: no
+hlsAllowOrigins: ['*']
+hlsAlwaysRemux: no
+hlsVariant: fmp4
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsMuxerCloseAfter: 30s
+
+paths: {}

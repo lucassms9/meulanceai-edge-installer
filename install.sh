@@ -4,6 +4,7 @@
 # Uso: curl -fsSL https://install.meulanceai.com.br | bash -s -- \
 #        --establishment-id=UUID \
 #        --secret=EDGE_SECRET \
+#        --live-view-jwt-secret=LIVE_VIEW_JWT_SECRET \
 #        [--api-url=https://api.meulanceai.com.br]
 #
 # Credenciais Docker Hub são buscadas automaticamente da API.
@@ -19,16 +20,22 @@ error()   { echo -e "${RED}[ERRO]${NC} $*"; exit 1; }
 # ─── Defaults ────────────────────────────────────────────────────────────────
 ESTABLISHMENT_ID=""
 EDGE_SECRET=""
+LIVE_VIEW_JWT_SECRET=""
 API_URL="https://api.meulanceai.com.br"
+PORTAL_ORIGIN="https://admin.meulanceai.com.br"
 INSTALL_DIR="/opt/meulanceai"
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/docker-compose.edge.yml"
+NGINX_CONF_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/nginx.conf"
+MEDIAMTX_CONF_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/mediamtx.yml"
 
 # ─── Parse args ──────────────────────────────────────────────────────────────
 for arg in "$@"; do
   case $arg in
     --establishment-id=*) ESTABLISHMENT_ID="${arg#*=}" ;;
     --secret=*)           EDGE_SECRET="${arg#*=}" ;;
+    --live-view-jwt-secret=*) LIVE_VIEW_JWT_SECRET="${arg#*=}" ;;
     --api-url=*)          API_URL="${arg#*=}" ;;
+    --portal-origin=*)    PORTAL_ORIGIN="${arg#*=}" ;;
     *) warn "Argumento desconhecido: $arg" ;;
   esac
 done
@@ -36,6 +43,7 @@ done
 # ─── Validações ──────────────────────────────────────────────────────────────
 [[ -z "$ESTABLISHMENT_ID" ]] && error "--establishment-id é obrigatório"
 [[ -z "$EDGE_SECRET" ]]      && error "--secret é obrigatório"
+[[ -z "$LIVE_VIEW_JWT_SECRET" ]] && error "--live-view-jwt-secret é obrigatório e deve ser igual ao LIVE_VIEW_JWT_SECRET da API"
 
 # Validar formato UUID
 if ! [[ "$ESTABLISHMENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
@@ -100,16 +108,30 @@ curl -fsSL "$DOCKER_COMPOSE_URL" -o "$INSTALL_DIR/docker-compose.yml"
 
 # ─── 3.1. nginx.conf ──────────────────────────────────────────────────────────
 info "📥 Baixando nginx.conf..."
-NGINX_CONF_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/nginx.conf"
 curl -fsSL "$NGINX_CONF_URL" -o "$INSTALL_DIR/nginx.conf"
 info "✅ nginx.conf instalado"
+
+# ─── 3.2. mediamtx.yml ───────────────────────────────────────────────────────
+info "📥 Baixando mediamtx.yml..."
+curl -fsSL "$MEDIAMTX_CONF_URL" -o "$INSTALL_DIR/mediamtx.yml"
+chmod 644 "$INSTALL_DIR/mediamtx.yml"
+info "✅ mediamtx.yml instalado"
 
 # ─── 4. .env (o único arquivo sensível — nunca sobrescrito em updates) ─────────
 ENV_FILE="$INSTALL_DIR/.env"
 
 if [[ -f "$ENV_FILE" ]]; then
   warn ".env já existe — não será sobrescrito."
-  warn "Para reconfigurar, apague manualmente: rm $ENV_FILE"
+
+  # Migração não destrutiva para instalações anteriores à Live View.
+  if ! grep -q '^LIVE_VIEW_JWT_SECRET=' "$ENV_FILE"; then
+    printf '\nLIVE_VIEW_JWT_SECRET=%s\n' "$LIVE_VIEW_JWT_SECRET" >> "$ENV_FILE"
+    info "✅ LIVE_VIEW_JWT_SECRET adicionado ao .env existente"
+  fi
+  if ! grep -q '^PORTAL_ORIGIN=' "$ENV_FILE"; then
+    printf 'PORTAL_ORIGIN=%s\n' "$PORTAL_ORIGIN" >> "$ENV_FILE"
+    info "✅ PORTAL_ORIGIN adicionado ao .env existente"
+  fi
 else
   info "🔑 Criando $ENV_FILE..."
   cat > "$ENV_FILE" << EOF
@@ -117,6 +139,8 @@ ESTABLISHMENT_ID=${ESTABLISHMENT_ID}
 API_URL=${API_URL}
 EDGE_SECRET=${EDGE_SECRET}
 BUFFER_DIR=/home/ubuntu/buffer
+LIVE_VIEW_JWT_SECRET=${LIVE_VIEW_JWT_SECRET}
+PORTAL_ORIGIN=${PORTAL_ORIGIN}
 EOF
   chmod 600 "$ENV_FILE"
   info "✅ .env criado (permissões: 600)"
@@ -297,6 +321,7 @@ if [[ "$CONTAINER_STATUS" == "running" ]]; then
   echo ""
   info "Establishment ID : $ESTABLISHMENT_ID"
   info "Container        : running"
+  info "MediaMTX        : $(docker inspect --format='{{.State.Status}}' mediamtx-edge 2>/dev/null || echo 'não encontrado')"
   info "Acesso local     : http://meulanceai.local"
   docker compose -f "$INSTALL_DIR/docker-compose.yml" logs meulanceai-edge --tail 10
 else
