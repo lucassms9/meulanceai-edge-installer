@@ -22,7 +22,7 @@ ESTABLISHMENT_ID=""
 EDGE_SECRET=""
 LIVE_VIEW_JWT_SECRET=""
 API_URL="https://api.meulanceai.com.br"
-PORTAL_ORIGIN="https://admin.meulanceai.com.br"
+PORTAL_ORIGIN="https://portal.meulanceai.com.br"
 INSTALL_DIR="/opt/meulanceai"
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/docker-compose.edge.yml"
 NGINX_CONF_URL="https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer/main/nginx.conf"
@@ -131,6 +131,9 @@ if [[ -f "$ENV_FILE" ]]; then
   if ! grep -q '^PORTAL_ORIGIN=' "$ENV_FILE"; then
     printf 'PORTAL_ORIGIN=%s\n' "$PORTAL_ORIGIN" >> "$ENV_FILE"
     info "✅ PORTAL_ORIGIN adicionado ao .env existente"
+  elif grep -q '^PORTAL_ORIGIN=https://admin\.meulanceai\.com\.br$' "$ENV_FILE"; then
+    sed -i 's|^PORTAL_ORIGIN=https://admin\.meulanceai\.com\.br$|PORTAL_ORIGIN=https://portal.meulanceai.com.br|' "$ENV_FILE"
+    info "✅ PORTAL_ORIGIN migrado para https://portal.meulanceai.com.br"
   fi
 else
   info "🔑 Criando $ENV_FILE..."

@@ -25,7 +25,7 @@ srt: no
 hls: yes
 hlsAddress: :8888
 hlsEncryption: no
-hlsAllowOrigins: ['*']
+hlsAllowOrigins: ['https://portal.meulanceai.com.br']
 hlsAlwaysRemux: no
 hlsVariant: fmp4
 hlsSegmentCount: 7

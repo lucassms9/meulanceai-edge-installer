@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/lucassms9/meulanceai-edge-installer
 | `--secret` | ✅ Sim | Chave secreta Edge (32+ caracteres) |
 | `--live-view-jwt-secret` | ✅ Sim | Mesmo `LIVE_VIEW_JWT_SECRET` configurado na API central |
 | `--api-url` | ❌ Não | URL da API (padrão: https://api.meulanceai.com.br) |
-| `--portal-origin` | ❌ Não | Origem autorizada no CORS (padrão: https://admin.meulanceai.com.br) |
+| `--portal-origin` | ❌ Não | Origem autorizada no CORS (padrão: https://portal.meulanceai.com.br) |
 
 ## 📦 O que o instalador faz?
 
