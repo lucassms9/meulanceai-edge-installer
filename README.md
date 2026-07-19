@@ -59,6 +59,9 @@ Execute novamente o comando de instalação com os mesmos dados. O instalador
 preserva o `.env`, adiciona apenas as variáveis ausentes e atualiza Compose,
 Nginx e MediaMTX antes de recriar os containers.
 
+Para fazer a atualização manual, configurar o Tailscale Funnel e validar a Live
+View, siga o [guia de atualização de um Edge existente](./ATUALIZACAO_EDGE_EXISTENTE.md).
+
 ## 🔐 Segurança
 
 - ⚠️ **NUNCA** compartilhe o `--secret` publicamente

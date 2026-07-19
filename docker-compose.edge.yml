@@ -53,6 +53,36 @@ services:
       - edge-network
     # Redis só acessível internamente (sem expor porta no host)
 
+  camera-director-ai:
+    image: lucassms9/meulanceai-camera-director:${EDGE_IMAGE_TAG:-latest}
+    container_name: camera-director-ai
+    restart: always
+    environment:
+      - DIRECTOR_AI_DETECTOR=${DIRECTOR_AI_DETECTOR:-motion}
+      - DIRECTOR_AI_MODEL_VERSION=${DIRECTOR_AI_MODEL_VERSION:-motion-shadow-v1}
+      - DIRECTOR_AI_MODEL_PATH=${DIRECTOR_AI_MODEL_PATH:-}
+      - DIRECTOR_AI_CONFIDENCE=${DIRECTOR_AI_CONFIDENCE:-0.25}
+      - DIRECTOR_AI_CLASS_ID=${DIRECTOR_AI_CLASS_ID:-32}
+      - DIRECTOR_AI_SAMPLE_FPS=${DIRECTOR_AI_SAMPLE_FPS:-5}
+      - DIRECTOR_AI_SAMPLE_SECONDS=${DIRECTOR_AI_SAMPLE_SECONDS:-2}
+    volumes:
+      - buffer_data:/buffer:ro
+      - director_models:/models:ro
+    expose:
+      - "8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    networks:
+      - edge-network
+
   meulanceai-edge:
     image: lucassms9/meulanceai-edge:${EDGE_IMAGE_TAG:-latest}
     container_name: meulanceai-edge
@@ -64,6 +94,7 @@ services:
       - REDIS_PORT=6379
       - MEDIAMTX_HLS_URL=http://mediamtx:8888
       - MEDIAMTX_API_URL=http://mediamtx:9997
+      - DIRECTOR_AI_URL=http://camera-director-ai:8090
     volumes:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
       - hls_data:/hls                  # segmentos HLS streaming ao vivo
@@ -111,3 +142,4 @@ volumes:
   hls_data:
   redis_data:
   updater_logs:
+  director_models:
