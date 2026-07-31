@@ -132,8 +132,7 @@ um erro, não prossiga até corrigir o arquivo ou o `.env`.
 
 ```bash
 cd /opt/meulanceai
-sudo docker compose pull
-sudo docker compose up -d --force-recreate
+sudo docker compose pull && sudo docker compose up -d --force-recreate
 ```
 
 Confira o resultado:
