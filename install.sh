@@ -260,9 +260,10 @@ fi
 
 # ─── 7. mDNS/Avahi (antes do pull — não depende de Docker) ─────────────────
 info "🔍 Configurando mDNS/Avahi para acesso via meulanceai.local..."
-if ! command -v avahi-daemon &>/dev/null; then
-  apt-get install -y -qq avahi-daemon avahi-utils
-fi
+# A instalação é intencionalmente executada sempre. O apt é idempotente e
+# isso corrige instalações antigas nas quais o daemon existe, mas o suporte NSS
+# para resolver nomes .local no próprio Edge (libnss-mdns) está ausente.
+apt-get install -y -qq avahi-daemon avahi-utils libnss-mdns
 
 # Configurar hostname
 CURRENT_HOSTNAME=$(hostname)
@@ -272,9 +273,8 @@ if [ "$CURRENT_HOSTNAME" != "meulanceai" ]; then
   info "✅ Hostname configurado: meulanceai"
 fi
 
-# Habilitar e iniciar Avahi
-systemctl enable avahi-daemon
-systemctl start avahi-daemon
+# Habilitar agora e também nos próximos boots
+systemctl enable --now avahi-daemon
 
 # Criar serviço HTTP mDNS
 cat > /etc/avahi/services/http.service << 'EOF'
@@ -290,7 +290,23 @@ cat > /etc/avahi/services/http.service << 'EOF'
 EOF
 
 systemctl restart avahi-daemon
-info "✅ mDNS configurado - acesso via meulanceai.local"
+
+# O Avahi pode levar alguns segundos para publicar o nome depois do restart.
+# Validar via NSS também garante que libnss-mdns está funcionando.
+MDNS_RECORD=""
+for _ in 1 2 3 4 5; do
+  MDNS_RECORD="$(getent hosts meulanceai.local 2>/dev/null || true)"
+  [[ -n "$MDNS_RECORD" ]] && break
+  sleep 1
+done
+
+if [[ -n "$MDNS_RECORD" ]]; then
+  MDNS_IP="$(awk 'NR == 1 { print $1 }' <<< "$MDNS_RECORD")"
+  info "✅ mDNS configurado - meulanceai.local → $MDNS_IP"
+else
+  warn "mDNS foi configurado, mas meulanceai.local ainda não respondeu ao teste local"
+  warn "Verifique com: systemctl status avahi-daemon && getent hosts meulanceai.local"
+fi
 
 # ─── 8. Docker login (se credenciais disponíveis) ───────────────────────────
 DOCKER_USERNAME_VAL=$(grep "^DOCKER_USERNAME=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
