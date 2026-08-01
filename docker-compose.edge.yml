@@ -9,6 +9,7 @@ services:
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
     expose:
+      - "8554"                         # RTSP relay interno para FFmpeg/IA
       - "8888"                         # HLS interno (acessado apenas pelo Edge)
       - "9997"                         # Control API interna
     logging:
@@ -92,8 +93,13 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # O sidecar lê o mesmo volume neste caminho. Sobrescreve instalações
+      # antigas que ainda possuem BUFFER_DIR=/home/ubuntu/buffer no .env.
+      - BUFFER_DIR=/buffer
       - MEDIAMTX_HLS_URL=http://mediamtx:8888
       - MEDIAMTX_API_URL=http://mediamtx:9997
+      - MEDIAMTX_RTSP_URL=${MEDIAMTX_RTSP_URL:-rtsp://mediamtx:8554}
+      - MEDIAMTX_STREAM_PROXY_ENABLED=${MEDIAMTX_STREAM_PROXY_ENABLED:-true}
       - DIRECTOR_AI_URL=http://camera-director-ai:8090
     volumes:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts

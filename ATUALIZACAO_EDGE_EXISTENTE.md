@@ -64,15 +64,27 @@ Garanta que estas variáveis existam uma única vez:
 API_URL=https://api.meulanceai.com.br
 LIVE_VIEW_JWT_SECRET=COLOQUE_AQUI_O_MESMO_SECRET_DA_API
 PORTAL_ORIGIN=https://portal.meulanceai.com.br
+BUFFER_DIR=/buffer
 
 # Fase 5 — recomendações passivas; não controla a live
 DIRECTOR_SHADOW_ENABLED=true
 DIRECTOR_SHADOW_INTERVAL_MS=2000
+DIRECTOR_SHADOW_STATUS_HEARTBEAT_MS=10000
 DIRECTOR_SHADOW_DIVERGENCE_CAPTURE_INTERVAL_MS=60000
 DIRECTOR_AI_DETECTOR=motion
 DIRECTOR_AI_MODEL_VERSION=motion-shadow-v1
 DIRECTOR_AI_SAMPLE_FPS=5
 DIRECTOR_AI_SAMPLE_SECONDS=2
+
+# Fase 7 — piloto automático protegido
+DIRECTOR_AUTOMATIC_ENABLED=false
+DIRECTOR_AUTOMATIC_MIN_SCORE_MARGIN=0.20
+DIRECTOR_AUTOMATIC_CONFIRMATIONS=3
+DIRECTOR_AUTOMATIC_MIN_DWELL_MS=5000
+DIRECTOR_AUTOMATIC_COOLDOWN_MS=8000
+DIRECTOR_AUTOMATIC_MAX_RECOMMENDATION_AGE_MS=4000
+DIRECTOR_AUTOMATIC_MAX_CAPTURE_LATENCY_MS=8000
+DIRECTOR_AUTOMATIC_MANUAL_OVERRIDE_MS=30000
 ```
 
 Não altere as variáveis específicas do Edge já provisionado, especialmente:
@@ -86,6 +98,11 @@ O `LIVE_VIEW_JWT_SECRET` deve ser exatamente igual ao configurado na API
 central. Diferenças de espaços, aspas ou caracteres invalidam os tokens da Live
 View. No Nano, salve com `Ctrl + O`, confirme com `Enter` e saia com `Ctrl + X`.
 
+O `BUFFER_DIR` precisa ser `/buffer`. Esse é o volume compartilhado, em modo de
+leitura, com o `camera-director-ai`. O caminho legado
+`/home/ubuntu/buffer` mantém os clipes isolados dentro do container do Edge e
+faz o Shadow Mode responder `buffer_unavailable`.
+
 Para conferir apenas a presença das variáveis sem imprimir os segredos:
 
 ```bash
@@ -98,6 +115,12 @@ Ative `DIRECTOR_SHADOW_ENABLED=true` somente depois de aplicar na API a
 migration `20260719023000_add_camera_director_shadow_recommendations`. Mesmo se
 o sidecar estiver desativado ou indisponível, a live e a direção manual continuam
 funcionando normalmente.
+
+Mantenha `DIRECTOR_AUTOMATIC_ENABLED=false` durante a atualização. Depois de
+validar o Shadow Mode, altere somente no Edge piloto para `true`, recrie o
+container `meulanceai-edge` e use o botão **Ativar piloto IA** na live PiP. A
+flag apenas libera o recurso: cada live continua iniciando em `MANUAL` e a IA
+só assume após confirmação explícita no Admin.
 
 ## 4. Baixar os arquivos atualizados do streaming
 
@@ -127,6 +150,13 @@ sudo docker compose config -q
 
 O comando não apresenta saída quando a configuração é válida. Se ele informar
 um erro, não prossiga até corrigir o arquivo ou o `.env`.
+
+Esta versão habilita o RTSP somente na rede interna do Docker. O FFmpeg da live
+passa a ler `rtsp://mediamtx:8554/<cameraId>` e o MediaMTX mantém a conexão com
+a câmera compartilhada entre a Live View e o YouTube. A porta `8554` não é
+publicada no host nem no Tailscale Funnel. Antes de iniciar ou reconstruir o
+FFmpeg, o Edge confirma a rota; se o MediaMTX estiver indisponível, usa o RTSP
+direto da câmera como fallback e mantém a live operacional.
 
 ## 5. Baixar as imagens e recriar os containers
 
@@ -158,6 +188,15 @@ Se algum container reiniciar continuamente, consulte os logs:
 ```bash
 sudo docker compose logs --tail=150 meulanceai-edge camera-director-ai mediamtx nginx
 ```
+
+Ao iniciar uma live, confirme no log do Edge:
+
+```bash
+sudo docker compose logs -f meulanceai-edge | grep -E 'relay interno|Adicionando entrada RTSP'
+```
+
+O resultado esperado contém `relay interno do MediaMTX` e uma entrada iniciada
+por `rtsp://mediamtx:8554/`, sem usuário ou senha da câmera.
 
 ## 6. Instalar e conectar o Tailscale
 
@@ -265,6 +304,7 @@ Checklist:
 - [ ] `camera-director-ai` aparece como `healthy` no `docker compose ps`.
 - [ ] Em uma live com duas câmeras, o Admin mostra `IA Shadow` como pronta.
 - [ ] A IA apenas recomenda e não troca a câmera automaticamente.
+- [ ] O log da live mostra `rtsp://mediamtx:8554/<cameraId>` como entrada.
 
 ## Rollback
 
@@ -280,6 +320,18 @@ sudo docker compose up -d --force-recreate
 ```
 
 Confira novamente o status e os logs antes de tentar outra atualização.
+
+Para desabilitar somente o novo relay da live, sem desfazer os demais arquivos:
+
+```bash
+sudo sed -i '/^MEDIAMTX_STREAM_PROXY_ENABLED=/d' /opt/meulanceai/.env
+echo 'MEDIAMTX_STREAM_PROXY_ENABLED=false' | sudo tee -a /opt/meulanceai/.env
+cd /opt/meulanceai
+sudo docker compose up -d --force-recreate meulanceai-edge
+```
+
+Com a flag desativada, o FFmpeg volta a consumir diretamente a URL RTSP de cada
+câmera.
 
 ## Comandos úteis do Funnel
 

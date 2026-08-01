@@ -49,6 +49,11 @@ O MediaMTX não publica portas no host. O acesso segue o fluxo:
 Tailscale Funnel → Nginx :80 → Gateway do Edge → MediaMTX interno
 ```
 
+O mesmo MediaMTX também oferece um relay RTSP apenas na rede Docker. As lives do
+YouTube consomem esse relay, evitando abrir outra sessão diretamente em cada
+câmera. O FFmpeg continua responsável pela composição 50/50 ou PiP, overlays e
+envio RTMP.
+
 O `LIVE_VIEW_JWT_SECRET` precisa ser exatamente o mesmo na API e em todos os
 Edges. O Nginx publica `/live/`, mas a autorização continua sendo validada pelo
 Gateway do Edge.

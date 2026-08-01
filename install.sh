@@ -141,7 +141,7 @@ else
 ESTABLISHMENT_ID=${ESTABLISHMENT_ID}
 API_URL=${API_URL}
 EDGE_SECRET=${EDGE_SECRET}
-BUFFER_DIR=/home/ubuntu/buffer
+BUFFER_DIR=/buffer
 LIVE_VIEW_JWT_SECRET=${LIVE_VIEW_JWT_SECRET}
 PORTAL_ORIGIN=${PORTAL_ORIGIN}
 EOF
@@ -179,6 +179,33 @@ EOF
     warn "Instalação continua usando imagem pública"
   fi
 fi
+
+# O volume compartilhado entre Edge e Camera Director é montado em /buffer.
+# Migra instalações antigas sem tocar nas demais credenciais do cliente.
+if grep -q '^BUFFER_DIR=/home/ubuntu/buffer$' "$ENV_FILE"; then
+  sed -i 's|^BUFFER_DIR=/home/ubuntu/buffer$|BUFFER_DIR=/buffer|' "$ENV_FILE"
+  info "✅ BUFFER_DIR migrado para o volume compartilhado /buffer"
+elif ! grep -q '^BUFFER_DIR=' "$ENV_FILE"; then
+  printf 'BUFFER_DIR=/buffer\n' >> "$ENV_FILE"
+  info "✅ BUFFER_DIR=/buffer adicionado ao .env"
+fi
+
+# Diretor automático permanece opt-in. Adiciona somente defaults ausentes,
+# sem alterar escolhas feitas anteriormente no Edge.
+for DIRECTOR_DEFAULT in \
+  'DIRECTOR_AUTOMATIC_ENABLED=false' \
+  'DIRECTOR_AUTOMATIC_MIN_SCORE_MARGIN=0.20' \
+  'DIRECTOR_AUTOMATIC_CONFIRMATIONS=3' \
+  'DIRECTOR_AUTOMATIC_MIN_DWELL_MS=5000' \
+  'DIRECTOR_AUTOMATIC_COOLDOWN_MS=8000' \
+  'DIRECTOR_AUTOMATIC_MAX_RECOMMENDATION_AGE_MS=4000' \
+  'DIRECTOR_AUTOMATIC_MAX_CAPTURE_LATENCY_MS=8000' \
+  'DIRECTOR_AUTOMATIC_MANUAL_OVERRIDE_MS=30000'; do
+  DIRECTOR_KEY="${DIRECTOR_DEFAULT%%=*}"
+  if ! grep -q "^${DIRECTOR_KEY}=" "$ENV_FILE"; then
+    printf '%s\n' "$DIRECTOR_DEFAULT" >> "$ENV_FILE"
+  fi
+done
 
 # ─── 5. Systemd service (garante start automático no boot) ───────────────────
 info "⚙️  Configurando serviço systemd..."

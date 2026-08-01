@@ -17,7 +17,8 @@ authInternalUsers:
 api: yes
 apiAddress: :9997
 
-rtsp: no
+rtsp: yes
+rtspAddress: :8554
 rtmp: no
 webrtc: no
 srt: no
