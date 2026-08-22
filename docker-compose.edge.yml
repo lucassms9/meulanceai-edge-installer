@@ -91,6 +91,9 @@ services:
     image: lucassms9/meulanceai-edge:${EDGE_IMAGE_TAG:-latest}
     container_name: meulanceai-edge
     restart: always
+    # Folga para o onModuleDestroy mandar SIGTERM nos FFmpeg e esperar cada um
+    # enviar o TEARDOWN RTSP. Com o default de 10s o SIGKILL chega antes.
+    stop_grace_period: 30s
     env_file:
       - /opt/meulanceai/.env          # único por cliente, persiste entre updates
     environment:
