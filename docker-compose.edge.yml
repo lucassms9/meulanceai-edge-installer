@@ -99,6 +99,10 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Dentro do volume buffer_data: snapshot em trânsito precisa
+      # sobreviver à recriação do container feita pelo auto-updater.
+      - CLIPS_DIR=/buffer/clips
+      - LOGS_DIR=/app/logs
       # O sidecar lê o mesmo volume neste caminho. Sobrescreve instalações
       # antigas que ainda possuem BUFFER_DIR=/home/ubuntu/buffer no .env.
       - BUFFER_DIR=/buffer
@@ -110,6 +114,7 @@ services:
     volumes:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
       - hls_data:/hls                  # segmentos HLS streaming ao vivo
+      - logs_data:/app/logs            # logs sobrevivem ao auto-update
     expose:
       - "3000"                         # porta interna (não exposta no host, apenas nginx acessa)
     depends_on:
@@ -152,6 +157,7 @@ networks:
 volumes:
   buffer_data:
   hls_data:
+  logs_data:
   redis_data:
   updater_logs:
   director_models:
