@@ -44,6 +44,48 @@ log "🆕 Nova versão detectada! Atualizando..."
 log "   Current: ${CURRENT_DIGEST:0:12}"
 log "   New:     ${NEW_DIGEST:0:12}"
 
+# --- Guarda de live em andamento --------------------------------------------
+# Recriar o container derruba a transmissão no meio do jogo. A imagem nova já
+# foi baixada acima; o que se adia aqui é só o restart.
+#
+# Na dúvida, atualiza: se o /health não responde, o edge provavelmente está
+# quebrado — e um edge quebrado que bloqueia updates nunca receberia a correção.
+# O prazo máximo existe pelo mesmo motivo, para o caso de uma live que fique
+# pendurada na lista de ativas e bloqueie o update para sempre.
+HEALTH_URL="${EDGE_HEALTH_URL:-http://meulanceai-edge:3000/health}"
+DEFER_STAMP="/var/log/edge-auto-update.deferred"
+MAX_DEFER_SECONDS="${EDGE_UPDATE_MAX_DEFER_SECONDS:-86400}"
+
+live_in_progress() {
+  # wget do BusyBox: -T é o timeout. Sem curl nem jq nesta imagem, a resposta é
+  # comparada como texto depois de tirar os espaços.
+  body=$(wget -q -O- -T 5 "$HEALTH_URL" 2>/dev/null | tr -d ' \n')
+  [ -z "$body" ] && return 1
+  case "$body" in
+    *'"active_lives":[]'*) return 1 ;;
+    *'"active_lives":['*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if live_in_progress; then
+  NOW=$(date +%s)
+  SINCE=$(cat "$DEFER_STAMP" 2>/dev/null)
+  case "$SINCE" in
+    '' | *[!0-9]*)
+      SINCE="$NOW"
+      echo "$SINCE" > "$DEFER_STAMP"
+      ;;
+  esac
+  WAITED=$(( NOW - SINCE ))
+  if [ "$WAITED" -lt "$MAX_DEFER_SECONDS" ]; then
+    log "📺 Live em andamento — restart adiado (há ${WAITED}s, limite ${MAX_DEFER_SECONDS}s)"
+    exit 0
+  fi
+  log "⏰ Live ainda ativa, mas o limite de ${MAX_DEFER_SECONDS}s foi atingido; atualizando assim mesmo"
+fi
+rm -f "$DEFER_STAMP"
+
 # Atualizar container
 cd /opt/meulanceai
 if ! docker compose up -d "$CONTAINER_NAME" >> "$LOG_FILE" 2>&1; then
