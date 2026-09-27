@@ -110,6 +110,10 @@ services:
       - MEDIAMTX_API_URL=http://mediamtx:9997
       - MEDIAMTX_RTSP_URL=${MEDIAMTX_RTSP_URL:-rtsp://mediamtx:8554}
       - MEDIAMTX_STREAM_PROXY_ENABLED=${MEDIAMTX_STREAM_PROXY_ENABLED:-true}
+      # Buffer de clipes lendo do relay em vez de discar a câmera: tira a
+      # segunda sessão RTSP por câmera. Desligado por padrão — o MediaMTX passa
+      # a ficar no caminho crítico dos clipes, então liga-se por edge.
+      - MEDIAMTX_BUFFER_RELAY_ENABLED=${MEDIAMTX_BUFFER_RELAY_ENABLED:-false}
       - DIRECTOR_AI_URL=http://camera-director-ai:8090
     volumes:
       - buffer_data:/buffer            # buffer FFmpeg — sobrevive a restarts
